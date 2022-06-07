@@ -55,6 +55,10 @@ void pivotRoot(const std::string& root) {
   syscall_ret = mkdir(old_root.c_str(), 0777);
   ASSERT_CHECK(syscall_ret, 0, "Create directory failed");
 
+  // This step is necessary for pivoting root to specified image rootfs
+  syscall_ret = system("unshare -m");
+  ASSERT_CHECK(syscall_ret, 0, "Unshared failed");
+
   // Old root is mounted to old_root directory
   syscall_ret = pivot_root(root, old_root);
   ASSERT_CHECK(syscall_ret, 0, "pivot root call failed");
