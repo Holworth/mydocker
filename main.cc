@@ -63,7 +63,9 @@ void CreateContainerEnv(const CTParams* init_params) {
 }
 
 void DestroyContainerEnv(const CTParams* init_params) {
-  int syscall_ret = rmdir(init_params->root_fs_dir.c_str());
+  int syscall_ret = umount((init_params->root_fs_dir + "/mountpoint").c_str());
+  ASSERT_CHECK(syscall_ret, 0, "Unmount failed");
+  syscall_ret = rmdir(init_params->root_fs_dir.c_str());
   ASSERT_CHECK(syscall_ret, 0, "Remove container directory failed");
 }
 
