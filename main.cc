@@ -27,23 +27,71 @@
   }\
 }
 
-void pivotRoot(const std::string& root);
 
 const size_t kStackSize = 4 * 1024 * 1024;
 
 // Initialization parameters to booting a container
 struct CTParams {
   std::string root_fs_dir;  // The absolute path for rootfs of docker image
+  std::string image_path;   // The absolute path for image.tar
 };
 
+void pivotRoot(const std::string& root);
+void CreateReadonlyLayer(const std::string& image_path, const std::string& root_path);
+void CreateWriteLayer(const std::string& root_path);
+void CreateMountPoint(const std::string& root_path);
+void CreateContainerEnv(const CTParams* init_params);
+
 void container_init(const CTParams* init_params) {
-  pivotRoot(init_params->root_fs_dir);
+  CreateContainerEnv(init_params);
+  pivotRoot(init_params->root_fs_dir + "/mountpoint");
   auto syscall_ret = mount("proc", "/proc", "proc", MS_NOEXEC | MS_NOSUID | MS_NODEV, nullptr);
   ASSERT_CHECK(syscall_ret, 0, "mount proc file system failed");
 }
 
 int pivot_root(const std::string& new_root, const std::string& old_root) {
   return syscall(SYS_pivot_root, new_root.c_str(), old_root.c_str());
+}
+
+void CreateContainerEnv(const CTParams* init_params) {
+  int syscall_ret = mkdir(init_params->root_fs_dir.c_str(), 0777);
+  ASSERT_CHECK(syscall_ret, 0, "Create container directory failed");
+  CreateReadonlyLayer(init_params->image_path, init_params->root_fs_dir);
+  CreateWriteLayer(init_params->root_fs_dir);
+  CreateMountPoint(init_params->root_fs_dir);
+}
+
+// Root path is at the same level as image path by default
+void CreateReadonlyLayer(const std::string& image_path, const std::string& root_path) {
+  auto readonly_layer_path = root_path + "/readlayer";
+  int syscall_ret = mkdir(readonly_layer_path.c_str(), 0777);
+  ASSERT_CHECK(syscall_ret, 0, "Create readonly layer failed");
+
+  char cmd[512];
+  std::sprintf(cmd, "tar -xf %s -C %s", image_path.c_str(), readonly_layer_path.c_str());
+
+  syscall_ret = system(cmd);
+  ASSERT_CHECK(syscall_ret, 0, "Tar image failed");
+}
+
+void CreateWriteLayer(const std::string& root_path) {
+  auto write_layer_path = root_path + "/writelayer";
+  int syscall_ret = mkdir(write_layer_path.c_str(), 0777);
+  ASSERT_CHECK(syscall_ret, 0, "Create Write Layer failed");
+}
+
+void CreateMountPoint(const std::string& root_path) {
+  auto mount_path = root_path + "/mountpoint";
+  auto readonly_layer_path = root_path + "/readlayer";
+  auto write_layer_path = root_path + "/writelayer";
+  int syscall_ret = mkdir(mount_path.c_str(), 0777);
+  ASSERT_CHECK(syscall_ret, 0, "Create Mount Point failed");
+
+  char cmd[512];
+  std::sprintf(cmd, "mount -t aufs -o dirs=%s:%s none %s", write_layer_path.c_str(), 
+               readonly_layer_path.c_str(), mount_path.c_str());
+  syscall_ret = system(cmd);
+  ASSERT_CHECK(syscall_ret, 0, "mount aufs failed");
 }
 
 void pivotRoot(const std::string& root) {
@@ -92,7 +140,13 @@ int container_process(void* param) {
 
 void parse_parameters(CTParams* params, int argc, char* argv[]) {
   ASSERT_CHECK((argc > 1), true, "Require at least one argument");
-  params->root_fs_dir = std::string(argv[1]);
+  params->image_path = std::string(argv[1]);
+  if (argc == 2) {
+    // By default, fs dir is the same directory that cast off the last ".tar" characters
+    params->root_fs_dir = std::string(argv[1]).substr(0, params->image_path.size() - 4);
+  } else {
+    params->root_fs_dir = std::string(argv[2]);
+  }
 }
 
 int main(int argc, char* argv[]) {
