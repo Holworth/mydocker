@@ -41,6 +41,7 @@ void CreateReadonlyLayer(const std::string& image_path, const std::string& root_
 void CreateWriteLayer(const std::string& root_path);
 void CreateMountPoint(const std::string& root_path);
 void CreateContainerEnv(const CTParams* init_params);
+void DestroyContainerEnv(const CTParams* init_params);
 
 void container_init(const CTParams* init_params) {
   CreateContainerEnv(init_params);
@@ -59,6 +60,11 @@ void CreateContainerEnv(const CTParams* init_params) {
   CreateReadonlyLayer(init_params->image_path, init_params->root_fs_dir);
   CreateWriteLayer(init_params->root_fs_dir);
   CreateMountPoint(init_params->root_fs_dir);
+}
+
+void DestroyContainerEnv(const CTParams* init_params) {
+  int syscall_ret = rmdir(init_params->root_fs_dir.c_str());
+  ASSERT_CHECK(syscall_ret, 0, "Remove container directory failed");
 }
 
 // Root path is at the same level as image path by default
@@ -93,6 +99,7 @@ void CreateMountPoint(const std::string& root_path) {
   syscall_ret = system(cmd);
   ASSERT_CHECK(syscall_ret, 0, "mount aufs failed");
 }
+
 
 void pivotRoot(const std::string& root) {
   auto old_root = root + "/.pivot_root";
@@ -135,6 +142,8 @@ int container_process(void* param) {
   auto syscall_ret = execv(args[0], args);
   ASSERT_CHECK(syscall_ret, 0, "Running shell failed");
 
+  // Destroy env after shell exits
+  DestroyContainerEnv(init_param);
   return 0;
 }
 
