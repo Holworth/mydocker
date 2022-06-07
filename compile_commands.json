@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/home/kqh/mydocker/build",
+  "command": "/usr/bin/c++   -g -o CMakeFiles/docker.dir/main.cc.o -c /home/kqh/mydocker/main.cc",
+  "file": "/home/kqh/mydocker/main.cc"
+}
+]
