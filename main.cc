@@ -82,9 +82,10 @@ int container_process(void* param) {
   // Container initialization
   container_init(init_param);
 
-  // Run in bash
-  char* args[] = {"/bin/bash", nullptr};
-  execv(args[0], args);
+  // Run in shell
+  char* args[] = {"/bin/sh", nullptr};
+  auto syscall_ret = execv(args[0], args);
+  ASSERT_CHECK(syscall_ret, 0, "Running shell failed");
 
   return 0;
 }
