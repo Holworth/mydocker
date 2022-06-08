@@ -18,14 +18,10 @@ public:
 
 class MemorySubsystem : public Subsystem {
 public:
-  ~MemorySubsystem() = default;
-  MemorySubsystem() = default;
   const std::string Name() const override { 
     return std::string("MemorySubsystem"); 
   }
-
   void Set(const std::string& path, const ResourceConfig* config) override;
-
   void Apply(const std::string& path, int pid) override;
 };
 
