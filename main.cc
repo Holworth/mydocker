@@ -143,7 +143,9 @@ void parse_parameters(CTParams* params, int argc, char* argv[]) {
   ASSERT_CHECK((argc > 1), true, "Require at least one argument");
   params->image_path = std::string(argv[1]);
   params->root_fs_dir = std::string(argv[2]);
-  params->res_config.mem_limit = std::string(argv[3]);
+  if (argc > 3) { // resource limitation parameters
+    params->res_config.mem_limit = std::string(argv[3]);
+  }
 }
 
 int main(int argc, char* argv[]) {
