@@ -12,7 +12,6 @@
 #include <thread>
 #include <errno.h>
 #include <unistd.h>
-#include <filesystem>
 #include <iostream>
 
 #include "util.h"

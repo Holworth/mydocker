@@ -4,7 +4,9 @@
 #include <unordered_set>
 
 struct ResourceConfig {
-  std::string mem_limit; // memory limit expressed as string, e.g. "100m"
+  std::string mem_limit;  // memory limit expressed as string, e.g. "100m"
+  std::string cpu_period; // CPU time (in ms) of each time slice
+  std::string cpu_quota;  // CPU time this process can use (in ms)
 };
 
 // Interface for subsystem resources controlling
@@ -20,6 +22,15 @@ class MemorySubsystem : public Subsystem {
 public:
   const std::string Name() const override { 
     return std::string("MemorySubsystem"); 
+  }
+  void Set(const std::string& path, const ResourceConfig* config) override;
+  void Apply(const std::string& path, int pid) override;
+};
+
+class CPUSubsystem : public Subsystem {
+public:
+  const std::string Name() const override {
+    return std::string("CPU subsystem");
   }
   void Set(const std::string& path, const ResourceConfig* config) override;
   void Apply(const std::string& path, int pid) override;
