@@ -15,17 +15,8 @@
 #include <filesystem>
 #include <iostream>
 
-#define ASSERT_CHECK(val, expect, msg) \
-{\
-  if ((val) != (expect)) \
-  {\
-    std::printf("[ASSERTION FAILED] at %s, %d\n", __FILE__, __LINE__);\
-    std::cerr << "[Error Msg]: " << msg << \
-                 "\n[EXPECT]: " << expect << "\n[GOT]: " << val << \
-                 "\n[Errno]: " << std::strerror(errno) << std::endl;\
-    exit(1); \
-  }\
-}
+#include "util.h"
+#include "cgroup.h"
 
 
 const size_t kStackSize = 4 * 1024 * 1024;
@@ -34,6 +25,7 @@ const size_t kStackSize = 4 * 1024 * 1024;
 struct CTParams {
   std::string root_fs_dir;  // The absolute path for rootfs of docker image
   std::string image_path;   // The absolute path for image.tar
+  ResourceConfig res_config; // Resources configuration
 };
 
 void pivotRoot(const std::string& root);
@@ -144,20 +136,14 @@ int container_process(void* param) {
   auto syscall_ret = execv(args[0], args);
   ASSERT_CHECK(syscall_ret, 0, "Running shell failed");
 
-  // Destroy env after shell exits
-  DestroyContainerEnv(init_param);
   return 0;
 }
 
 void parse_parameters(CTParams* params, int argc, char* argv[]) {
   ASSERT_CHECK((argc > 1), true, "Require at least one argument");
   params->image_path = std::string(argv[1]);
-  if (argc == 2) {
-    // By default, fs dir is the same directory that cast off the last ".tar" characters
-    params->root_fs_dir = std::string(argv[1]).substr(0, params->image_path.size() - 4);
-  } else {
-    params->root_fs_dir = std::string(argv[2]);
-  }
+  params->root_fs_dir = std::string(argv[2]);
+  params->res_config.mem_limit = std::string(argv[3]);
 }
 
 int main(int argc, char* argv[]) {
@@ -177,7 +163,11 @@ int main(int argc, char* argv[]) {
   if (pid > 0) {
     printf("Child pid=%d\n", pid);
     int wait_stat;
-    // auto ret = waitpid(pid, &wait_stat, WEXITED);
+
+    // Initialize cgroup:
+    CGroupManager cgroup("mydocker-cgroup", init_params.res_config);
+    cgroup.Set();
+    cgroup.Apply(pid);
     
     while (true) {
       // auto ret = waitpid(pid, nullptr, WNOHANG);
@@ -189,6 +179,10 @@ int main(int argc, char* argv[]) {
       }
       std::this_thread::sleep_for(std::chrono::seconds(1));
     }
+
+    // Destroy env after shell exits
+    // DestroyContainerEnv(&init_params);
+    // TODO: Destroy cgroup
   } else {  // Current process is child
     printf("I am child\n");
     std::this_thread::sleep_for(std::chrono::seconds(5));
