@@ -41,6 +41,7 @@ public:
   CGroupManager(const std::string& path, const ResourceConfig& res_config)
     :path_(path), res_config_(res_config) {
     subsys_.insert(new MemorySubsystem());
+    subsys_.insert(new CPUSubsystem());
   }
   ~CGroupManager() {
     for (auto p : subsys_) {

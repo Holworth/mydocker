@@ -144,6 +144,8 @@ void parse_parameters(CTParams* params, int argc, char* argv[]) {
   params->root_fs_dir = std::string(argv[2]);
   if (argc > 3) { // resource limitation parameters
     params->res_config.mem_limit = std::string(argv[3]);
+    params->res_config.cpu_period = std::string(argv[4]);
+    params->res_config.cpu_quota = std::string(argv[5]);
   }
 }
 
