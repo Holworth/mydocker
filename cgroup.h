@@ -13,7 +13,7 @@ public:
   virtual const std::string Name() const = 0;
   virtual void Set(const std::string& path, const ResourceConfig* config) = 0;
   virtual void Apply(const std::string& path, int pid) = 0;
-  virtual ~Subsystem();
+  virtual ~Subsystem() = default;
 };
 
 class MemorySubsystem : public Subsystem {
