@@ -24,7 +24,8 @@ const size_t kStackSize = 4 * 1024 * 1024;
 struct CTParams {
   std::string root_fs_dir;  // The absolute path for rootfs of docker image
   std::string image_path;   // The absolute path for image.tar
-  ResourceConfig res_config; // Resources configuration
+  ResourceConfig res_config;// Resources configuration
+  std::string ip_addr;      //ip addr for veth
 };
 
 void pivotRoot(const std::string& root);
@@ -151,12 +152,37 @@ void parse_parameters(CTParams* params, int argc, char* argv[]) {
   }
 }
 
+void initialize_veth(std::string ip, int pid){
+  char cmd[512];
+
+  std::sprintf(cmd,"sudo touch /var/run/netns/ns%d", pid);
+  ASSERT_CHECK(system(cmd), 0, "create netns failed");
+
+  std::sprintf(cmd,"mount --bind /proc/%d/ns/net /var/run/netns/ns%d", pid, pid);
+  ASSERT_CHECK(system(cmd), 0, "mount netns failed");
+
+  std::sprintf(cmd,"ip link add name veth%dh type veth peer name veth%dg", pid, pid);
+  ASSERT_CHECK(system(cmd), 0, "create veth failed");
+
+  std::sprintf(cmd,"ip link set veth%dg netns ns%d", pid, pid);
+  ASSERT_CHECK(system(cmd), 0, "set veth namespace failed");
+
+  std::sprintf(cmd,"ip netns exec ns%d ip link set dev veth%dg name eth0", pid, pid);
+  ASSERT_CHECK(system(cmd), 0, "set veth namespace failed");
+
+  std::sprintf(cmd,"ip netns exec ns%d ip address add %s dev eth0", pid, ip.c_str());
+  ASSERT_CHECK(system(cmd), 0, "set ip addr failed");
+
+  std::sprintf(cmd,"ip netns exec ns%d ip link set dev eth0 up", pid);
+  ASSERT_CHECK(system(cmd), 0, "set veth up failed");
+  return;
+}
 
 int main(int argc, char* argv[]) {
   CTParams init_params;
   // parse parameters
   int opt = 0;
-  while((opt = getopt(argc,argv,"hi:r:m:c:q:k")) !=-1){
+  while((opt = getopt(argc,argv,"hi:r:m:c:q:ka:")) !=-1){
     switch(opt){
       case 'h':
         printf(
@@ -168,6 +194,7 @@ int main(int argc, char* argv[]) {
         "\t  -k                  : when memory allocation exceeds control, whether keep it or not \n"
         "\t  -c <cpu_time_slice> : select the size of cpu time slice  in us, it should be >=1000 \n"
         "\t  -q <cpu quota >     : select the size of cpu quota in us, it should be >=1000 \n"
+        "\t  -a <ip address>     : ip address for veth \n"
         );
         return 0;
       case 'i':
@@ -189,6 +216,9 @@ int main(int argc, char* argv[]) {
       case 'q':
         init_params.res_config.cpu_quota = std::string(optarg);
         break;
+      case 'a':
+        init_params.ip_addr = std::string(optarg);
+        break;
       case '?':
         printf("error optopt:%c\n",optopt);
         printf("error opterr:%c\n",opterr);
@@ -202,7 +232,7 @@ int main(int argc, char* argv[]) {
 
   // spawn another process to run the container 
   auto stack = malloc(kStackSize);
-  auto clone_flags = CLONE_NEWUTS | CLONE_NEWPID | CLONE_NEWNS;
+  auto clone_flags = CLONE_NEWUTS | CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWNET;
   auto flags = clone_flags | SIGCHLD;
   auto pid = clone(container_process, (char*)stack + kStackSize, flags, &init_params);
 
@@ -218,6 +248,9 @@ int main(int argc, char* argv[]) {
     CGroupManager cgroup("mydocker-cgroup", init_params.res_config);
     cgroup.Set();
     cgroup.Apply(pid);
+
+    // Initialize veth
+    initialize_veth(init_params.ip_addr, pid);
     
     while (true) {
       // auto ret = waitpid(pid, nullptr, WNOHANG);
@@ -233,6 +266,7 @@ int main(int argc, char* argv[]) {
     // Destroy env after shell exits
     // DestroyContainerEnv(&init_params);
     // TODO: Destroy cgroup
+    // TODO: Destory netns
   } else {  // Current process is child
     printf("I am child\n");
     std::this_thread::sleep_for(std::chrono::seconds(5));
