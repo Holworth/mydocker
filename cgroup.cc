@@ -22,6 +22,12 @@ void MemorySubsystem::Set(const std::string& path, const ResourceConfig* res) {
     int syscall_ret = system(cmd);
     ASSERT_CHECK(syscall_ret, 0, "Write memory limit in bytes failed");
   }
+  if (res->mem_keep ==true){
+    char cmd[512];
+    sprintf(cmd, "echo 1 >> %s/memory.oom_control",cgroup_path.c_str());
+    int syscall_ret = system(cmd);
+    ASSERT_CHECK(syscall_ret, 0, "Write memory oom control in bytes failed");
+  }
 }
 
 void MemorySubsystem::Apply(const std::string& path, int pid) {
@@ -54,10 +60,12 @@ void CPUSubsystem::Set(const std::string& path, const ResourceConfig* res) {
   }
 
   if (res->cpu_quota != "") {
+    
     char cmd[512];
     sprintf(cmd, "echo %s > %s/cpu.cfs_quota_us", res->cpu_quota.c_str(), cgroup_path.c_str());
     int syscall_ret = system(cmd);
     ASSERT_CHECK(syscall_ret, 0, "Write CPU quota failed");
+    
   }
 }
 

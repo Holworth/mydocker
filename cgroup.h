@@ -5,6 +5,7 @@
 
 struct ResourceConfig {
   std::string mem_limit;  // memory limit expressed as string, e.g. "100m"
+  bool mem_keep ;  // whether keep process if memory allocation exceeds control, kill it otherwise 
   std::string cpu_period; // CPU time (in ms) of each time slice
   std::string cpu_quota;  // CPU time this process can use (in ms)
 };

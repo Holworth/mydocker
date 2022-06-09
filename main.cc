@@ -138,7 +138,9 @@ int container_process(void* param) {
   return 0;
 }
 
+
 void parse_parameters(CTParams* params, int argc, char* argv[]) {
+
   ASSERT_CHECK((argc > 1), true, "Require at least one argument");
   params->image_path = std::string(argv[1]);
   params->root_fs_dir = std::string(argv[2]);
@@ -149,9 +151,54 @@ void parse_parameters(CTParams* params, int argc, char* argv[]) {
   }
 }
 
+
 int main(int argc, char* argv[]) {
   CTParams init_params;
-  parse_parameters(&init_params, argc, argv);
+  // parse parameters
+  int opt = 0;
+  while((opt = getopt(argc,argv,"hi:r:m:c:q:k")) !=-1){
+    switch(opt){
+      case 'h':
+        printf(
+        "usage:\n"
+        "\t  -h                  : print usage \n"
+        "\t  -i <path>           : select image path, should be absolute \n"
+        "\t  -r <root_path>      : select root path\n"
+        "\t  -m <memory volume>  : select mem limit, e.g 500m,200k \n"
+        "\t  -k                  : when memory allocation exceeds control, whether keep it or not \n"
+        "\t  -c <cpu_time_slice> : select the size of cpu time slice  in us, it should be >=1000 \n"
+        "\t  -q <cpu quota >     : select the size of cpu quota in us, it should be >=1000 \n"
+        );
+        return 0;
+      case 'i':
+        init_params.image_path = std::string(optarg);
+        break;
+      case 'r':
+        init_params.root_fs_dir = std::string(optarg);
+        std::cout<<init_params.root_fs_dir<<std::endl;
+        break;
+      case 'm':
+        init_params.res_config.mem_limit = std::string(optarg);
+        break;
+      case 'k':
+        init_params.res_config.mem_keep  = true;
+        break;
+      case 'c':
+        init_params.res_config.cpu_period = std::string(optarg);
+        break;
+      case 'q':
+        init_params.res_config.cpu_quota = std::string(optarg);
+        break;
+      case '?':
+        printf("error optopt:%c\n",optopt);
+        printf("error opterr:%c\n",opterr);
+        exit(EXIT_FAILURE);
+    }
+
+
+  }
+
+  //parse_parameters(&init_params, argc, argv);
 
   // spawn another process to run the container 
   auto stack = malloc(kStackSize);
