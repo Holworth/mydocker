@@ -26,6 +26,7 @@ struct CTParams {
   std::string image_path;   // The absolute path for image.tar
   ResourceConfig res_config;// Resources configuration
   std::string ip_addr;      //ip addr for veth
+  std::string bridge;       //bridge for veth
 };
 
 void pivotRoot(const std::string& root);
@@ -152,10 +153,10 @@ void parse_parameters(CTParams* params, int argc, char* argv[]) {
   }
 }
 
-void initialize_veth(std::string ip, int pid){
+void initialize_veth(std::string ip,std::string bridge, int pid){
   char cmd[512];
 
-  std::sprintf(cmd,"sudo touch /var/run/netns/ns%d", pid);
+  std::sprintf(cmd,"touch /var/run/netns/ns%d", pid);
   ASSERT_CHECK(system(cmd), 0, "create netns failed");
 
   std::sprintf(cmd,"mount --bind /proc/%d/ns/net /var/run/netns/ns%d", pid, pid);
@@ -174,7 +175,16 @@ void initialize_veth(std::string ip, int pid){
   ASSERT_CHECK(system(cmd), 0, "set ip addr failed");
 
   std::sprintf(cmd,"ip netns exec ns%d ip link set dev eth0 up", pid);
-  ASSERT_CHECK(system(cmd), 0, "set veth up failed");
+  ASSERT_CHECK(system(cmd), 0, "set veth(guest) up failed");
+
+  if(bridge.size() <= 0) return;
+
+  std::sprintf(cmd,"ip link set dev veth%dh master %s", pid, bridge.c_str());
+  ASSERT_CHECK(system(cmd), 0, "link veth to bridge failed");
+
+  std::sprintf(cmd,"ip link set dev veth%dh up", pid);
+  ASSERT_CHECK(system(cmd), 0, "set veth(host) up failed");
+
   return;
 }
 
@@ -182,7 +192,7 @@ int main(int argc, char* argv[]) {
   CTParams init_params;
   // parse parameters
   int opt = 0;
-  while((opt = getopt(argc,argv,"hi:r:m:c:q:ka:")) !=-1){
+  while((opt = getopt(argc,argv,"hi:r:m:c:q:ka:b:")) !=-1){
     switch(opt){
       case 'h':
         printf(
@@ -195,6 +205,7 @@ int main(int argc, char* argv[]) {
         "\t  -c <cpu_time_slice> : select the size of cpu time slice  in us, it should be >=1000 \n"
         "\t  -q <cpu quota >     : select the size of cpu quota in us, it should be >=1000 \n"
         "\t  -a <ip address>     : ip address for veth \n"
+        "\t  -b <network bridge> : network bridge for veth, only useful when provide ip address\n"
         );
         return 0;
       case 'i':
@@ -219,6 +230,9 @@ int main(int argc, char* argv[]) {
       case 'a':
         init_params.ip_addr = std::string(optarg);
         break;
+      case 'b':
+        init_params.bridge = std::string(optarg);
+        break;
       case '?':
         printf("error optopt:%c\n",optopt);
         printf("error opterr:%c\n",opterr);
@@ -232,7 +246,8 @@ int main(int argc, char* argv[]) {
 
   // spawn another process to run the container 
   auto stack = malloc(kStackSize);
-  auto clone_flags = CLONE_NEWUTS | CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWNET;
+  auto clone_flags = CLONE_NEWUTS | CLONE_NEWPID | CLONE_NEWNS;
+  if(init_params.ip_addr.size() > 0) clone_flags = clone_flags | CLONE_NEWNET;
   auto flags = clone_flags | SIGCHLD;
   auto pid = clone(container_process, (char*)stack + kStackSize, flags, &init_params);
 
@@ -250,7 +265,9 @@ int main(int argc, char* argv[]) {
     cgroup.Apply(pid);
 
     // Initialize veth
-    initialize_veth(init_params.ip_addr, pid);
+    if(init_params.ip_addr.size() > 0){
+      initialize_veth(init_params.ip_addr, init_params.bridge, pid);
+    }
     
     while (true) {
       // auto ret = waitpid(pid, nullptr, WNOHANG);

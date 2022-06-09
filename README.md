@@ -5,6 +5,10 @@ A simple implementation of docker engine, the final project of UCAS CloudComputi
 1. 进入`./mydocker`后，执行make 编译docker
 2. 运行`./mydocker -h`显示提示信息
 3. 典型的启动docker命令为`sudo ./docker -i /home/ubuntu/xh/centos.tar -r ./centos -m 25m -c 4000 -q 2000 -k`
+### 网络设置
+通过附加参数a,可以对容器进行网络隔离,为容器创建eth0设备，指定其ip，进一步附加参数b，可将eth0连接到指定的bridge上，如`-a 192.168.0.1/24 -b br0`
+目前bridge需要手动建立，如`ip link add br0 type bridge; ip link set dev br0 up`
+（或许可以把建立eth0和创建netns分开控制？）
 
 ## memory cgroup限制测试
 启动docker之后，`cd resource-test &  ./mem-allocate`
