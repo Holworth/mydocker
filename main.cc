@@ -20,6 +20,17 @@
 
 const size_t kStackSize = 4 * 1024 * 1024;
 
+char * get_pure_ip(char * res, const char * ip) {
+  for (int i = 0; i < 64; i++) {
+    if (ip[i] == '/') {
+      res[i] = '\0';
+      break;
+    }
+    res[i] = ip[i];
+  }
+  return res;
+}
+
 // Initialization parameters to booting a container
 struct CTParams {
   std::string root_fs_dir;  // The absolute path for rootfs of docker image
@@ -34,7 +45,7 @@ void CreateReadonlyLayer(const std::string& image_path, const std::string& root_
 void CreateWriteLayer(const std::string& root_path);
 void CreateMountPoint(const std::string& root_path);
 void CreateContainerEnv(const CTParams* init_params);
-void DestroyContainerEnv(const CTParams* init_params);
+void DestroyContainerEnv(const CTParams* init_params, int pid);
 
 void container_init(const CTParams* init_params) {
   CreateContainerEnv(init_params);
@@ -55,10 +66,29 @@ void CreateContainerEnv(const CTParams* init_params) {
   CreateMountPoint(init_params->root_fs_dir);
 }
 
-void DestroyContainerEnv(const CTParams* init_params) {
+void DestroyContainerEnv(const CTParams* init_params, int pid) {
+  /*
   int syscall_ret = umount((init_params->root_fs_dir + "/mountpoint").c_str());
   ASSERT_CHECK(syscall_ret, 0, "Unmount failed");
   syscall_ret = rmdir(init_params->root_fs_dir.c_str());
+  ASSERT_CHECK(syscall_ret, 0, "Remove container directory failed"); */
+
+  int syscall_ret;
+  char cmd[512];
+
+  if (init_params->ip_addr.size() > 0) {
+    std::sprintf(cmd, "umount /var/run/netns/ns%d", pid);
+    syscall_ret = system(cmd);
+
+    std::sprintf(cmd, "ip netns del ns%d", pid);
+    syscall_ret = system(cmd);
+    ASSERT_CHECK(syscall_ret, 0, "Delete net namespace failed");
+  }
+
+  // TODO: Umount aufs
+
+  std::sprintf(cmd, "rm -rf %s", init_params->root_fs_dir.c_str());
+  syscall_ret = system(cmd);
   ASSERT_CHECK(syscall_ret, 0, "Remove container directory failed");
 }
 
@@ -177,13 +207,20 @@ void initialize_veth(std::string ip,std::string bridge, int pid){
   std::sprintf(cmd,"ip netns exec ns%d ip link set dev eth0 up", pid);
   ASSERT_CHECK(system(cmd), 0, "set veth(guest) up failed");
 
+  std::sprintf(cmd,"ip link set dev veth%dh up", pid);
+  ASSERT_CHECK(system(cmd), 0, "set veth(host) up failed");
+
+  std::sprintf(cmd,"ip addr add 192.168.1.1/24 dev veth%dh", pid);
+  ASSERT_CHECK(system(cmd), 0, "set veth(host) up failed");
+
+  char ip_prefix[64];
+  std::sprintf(cmd,"ip route add %s via 192.168.1.1 dev veth%dh", get_pure_ip(ip_prefix, ip.c_str()), pid);
+  ASSERT_CHECK(system(cmd), 0, "set route failed");
+
   if(bridge.size() <= 0) return;
 
   std::sprintf(cmd,"ip link set dev veth%dh master %s", pid, bridge.c_str());
   ASSERT_CHECK(system(cmd), 0, "link veth to bridge failed");
-
-  std::sprintf(cmd,"ip link set dev veth%dh up", pid);
-  ASSERT_CHECK(system(cmd), 0, "set veth(host) up failed");
 
   return;
 }
@@ -244,7 +281,7 @@ int main(int argc, char* argv[]) {
 
   //parse_parameters(&init_params, argc, argv);
 
-  // spawn another process to run the container 
+  // spawn another process to run the container
   auto stack = malloc(kStackSize);
   auto clone_flags = CLONE_NEWUTS | CLONE_NEWPID | CLONE_NEWNS;
   if(init_params.ip_addr.size() > 0) clone_flags = clone_flags | CLONE_NEWNET;
@@ -268,7 +305,7 @@ int main(int argc, char* argv[]) {
     if(init_params.ip_addr.size() > 0){
       initialize_veth(init_params.ip_addr, init_params.bridge, pid);
     }
-    
+
     while (true) {
       // auto ret = waitpid(pid, nullptr, WNOHANG);
       auto ret = wait(nullptr);
@@ -281,9 +318,8 @@ int main(int argc, char* argv[]) {
     }
 
     // Destroy env after shell exits
-    // DestroyContainerEnv(&init_params);
-    // TODO: Destroy cgroup
-    // TODO: Destory netns
+    DestroyContainerEnv(&init_params, pid);
+
   } else {  // Current process is child
     printf("I am child\n");
     std::this_thread::sleep_for(std::chrono::seconds(5));
